@@ -2,8 +2,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
-from data import v2 as cfg
 from ..box_utils import match, log_sum_exp
+
+cfg = {'feature_maps' : [38, 19, 10, 5, 3, 1], 'min_dim' : 300, 'steps' : [8, 16, 32, 64, 100, 300],'min_sizes' : [30, 60, 111, 162, 213, 264], 
+    'max_sizes' : [60, 111, 162, 213, 264, 315], 'aspect_ratios' : [[2], [2, 3], [2, 3], [2, 3], [2], [2]], 'variance' : [0.1, 0.2], 'clip' : True,}
+
 
 class MultiBoxLoss(nn.Module):
     """SSD Weighted Loss Function
@@ -30,7 +33,7 @@ class MultiBoxLoss(nn.Module):
 
     def __init__(self, num_classes, overlap_thresh, prior_for_matching,
                  bkg_label, neg_mining, neg_pos, neg_overlap, encode_target,
-                 use_gpu=True):
+                 cfg, use_gpu=True):
         super(MultiBoxLoss, self).__init__()
         self.use_gpu = use_gpu
         self.num_classes = num_classes
@@ -43,18 +46,9 @@ class MultiBoxLoss(nn.Module):
         self.neg_overlap = neg_overlap
         self.variance = cfg['variance']
 
-    def forward(self, predictions, targets):
-        """Multibox Loss
-        Args:
-            predictions (tuple): A tuple containing loc preds, conf preds,
-            and prior boxes from SSD net.
-                conf shape: torch.size(batch_size,num_priors,num_classes)
-                loc shape: torch.size(batch_size,num_priors,4)
-                priors shape: torch.size(num_priors,4)
 
-            ground_truth (tensor): Ground truth boxes and labels for a batch,
-                shape: [batch_size,num_objs,5] (last idx is the label).
-        """
+    def forward(self, predictions, targets):
+
         loc_data, conf_data, priors = predictions
         num = loc_data.size(0)
         priors = priors[:loc_data.size(1), :]
