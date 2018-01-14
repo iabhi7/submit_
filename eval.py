@@ -10,11 +10,11 @@ import torch.nn as nn
 import torch.backends.cudnn as cudnn
 import torchvision.transforms as transforms
 from torch.autograd import Variable
-from data import VOCroot
-from data import VOC_CLASSES as labelmap
+from data import CHECKOUTroot
+from data import CHECKOUT_CLASSES as labelmap
 import torch.utils.data as data
 
-from data import AnnotationTransform, VOCDetection, BaseTransform, VOC_CLASSES
+from data import AnnotationTransform, CHECKOUTDetection, BaseTransform, CHECKOUT_CLASSES
 from ssd import build_ssd
 
 import sys
@@ -44,7 +44,7 @@ parser.add_argument('--top_k', default=5, type=int,
                     help='Further restrict the number of predictions to parse')
 parser.add_argument('--cuda', default=True, type=str2bool,
                     help='Use cuda to train model')
-parser.add_argument('--voc_root', default=VOCroot, help='Location of VOC root directory')
+parser.add_argument('--voc_root', default=CHECKOUTroot, help='Location of VOC root directory')
 
 args = parser.parse_args()
 
@@ -60,7 +60,7 @@ annopath = os.path.join(args.voc_root, 'VOC2007', 'Annotations', '%s.xml')
 imgpath = os.path.join(args.voc_root, 'VOC2007', 'JPEGImages', '%s.jpg')
 imgsetpath = os.path.join(args.voc_root, 'VOC2007', 'ImageSets', 'Main', '{:s}.txt')
 YEAR = '2007'
-devkit_path = VOCroot + 'VOC' + YEAR
+devkit_path = CHECKOUTroot + 'VOC' + YEAR
 dataset_mean = (104, 117, 123)
 set_type = 'test'
 
@@ -408,13 +408,13 @@ def evaluate_detections(box_list, output_dir, dataset):
 
 if __name__ == '__main__':
     # load net
-    num_classes = len(VOC_CLASSES) + 1 # +1 background
+    num_classes = len(CHECKOUT_CLASSES) + 1 # +1 background
     net = build_ssd('test', 300, num_classes) # initialize SSD
     net.load_state_dict(torch.load(args.trained_model))
     net.eval()
     print('Finished loading model!')
     # load data
-    dataset = VOCDetection(args.voc_root, [('2007', set_type)], BaseTransform(300, dataset_mean), AnnotationTransform())
+    dataset = CHECKOUTDetection(args.voc_root, [('2007', set_type)], BaseTransform(300, dataset_mean), AnnotationTransform())
     if args.cuda:
         net = net.cuda()
         cudnn.benchmark = True

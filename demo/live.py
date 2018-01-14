@@ -69,7 +69,7 @@ if __name__ == '__main__':
     from os import path
     sys.path.append(path.dirname(path.dirname(path.abspath(__file__))))
 
-    from data import BaseTransform, VOC_CLASSES as labelmap
+    from data import BaseTransform, CHECKOUT_CLASSES as labelmap
     from ssd import build_ssd
 
     net = build_ssd('test', 300, 21)    # initialize SSD

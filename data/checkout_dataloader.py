@@ -1,11 +1,3 @@
-"""VOC Dataset Classes
-
-Original author: Francisco Massa
-https://github.com/fmassa/vision/blob/voc_dataset/torchvision/datasets/voc.py
-
-Updated by: Ellis Brown, Max deGroot
-"""
-
 import os
 import os.path
 import sys
@@ -20,7 +12,7 @@ if sys.version_info[0] == 2:
 else:
     import xml.etree.ElementTree as ET
 
-VOC_CLASSES = ('sale', 'tonnorio', 'risotti', 'granrisparmio', 'skipper', 'colgate', 'scotti', 'mano')
+CHECKOUT_CLASSES = ('sale', 'tonnorio', 'risotti', 'granrisparmio', 'skipper', 'colgate', 'scotti', 'mano')
 
 # for making bounding boxes pretty
 COLORS = ((255, 0, 0, 128), (0, 255, 0, 128), (0, 0, 255, 128),
@@ -28,12 +20,10 @@ COLORS = ((255, 0, 0, 128), (0, 255, 0, 128), (0, 0, 255, 128),
 
 
 class AnnotationTransform(object):
-    """Transforms a VOC annotation into a Tensor of bbox coords and label index
-    Initilized with a dictionary lookup of classnames to indexes
-
+    """
     Arguments:
         class_to_ind (dict, optional): dictionary lookup of classnames -> indexes
-            (default: alphabetic indexing of VOC's 20 classes)
+            (default: alphabetic indexing of check)
         keep_difficult (bool, optional): keep difficult instances or not
             (default: False)
         height (int): height
@@ -42,7 +32,7 @@ class AnnotationTransform(object):
 
     def __init__(self, class_to_ind=None, keep_difficult=False):
         self.class_to_ind = class_to_ind or dict(
-            zip(VOC_CLASSES, range(len(VOC_CLASSES))))
+            zip(CHECKOUT_CLASSES, range(len(CHECKOUT_CLASSES))))
         print(self.class_to_ind)
         self.keep_difficult = keep_difficult
 
@@ -77,13 +67,13 @@ class AnnotationTransform(object):
         return res  # [[xmin, ymin, xmax, ymax, label_ind], ... ]
 
 
-class VOCDetection(data.Dataset):
-    """VOC Detection Dataset Object
+class CHECKOUTDetection(data.Dataset):
+    """Detection Dataset Object
 
     input is image, target is annotation
 
     Arguments:
-        root (string): filepath to VOCdevkit folder.
+        root (string): filepath to data/dev folder.
         image_set (string): imageset to use (eg. 'train', 'val', 'test')
         transform (callable, optional): transformation to perform on the
             input image
@@ -91,7 +81,6 @@ class VOCDetection(data.Dataset):
             target `annotation`
             (eg: take in caption string, return tensor of word indices)
         dataset_name (string, optional): which dataset to load
-            (default: 'VOC2007')
     """
 
     def __init__(self, root, image_sets, transform=None, target_transform=None,

@@ -1,4 +1,5 @@
 import os
+import os.path
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -7,23 +8,32 @@ import torch.nn.init as init
 import argparse
 from torch.autograd import Variable
 import torch.utils.data as data
-from data import v2, v1, AnnotationTransform, VOCDetection, detection_collate, VOCroot, VOC_CLASSES
+from data import AnnotationTransform, CHECKOUTDetection, detection_collate, CHECKOUTroot, CHECKOUT_CLASSES
 from utils.augmentations import SSDAugmentation
 from layers.modules import MultiBoxLoss
 from ssd import build_ssd
 import numpy as np
 import time
 
+# gets home dir cross platform
+home = os.path.expanduser("~")
+ddir = os.path.join(home,"data/dev/")
+
+CHECKOUTroot = ddir # path to dev root dir
+
+# data reshuffled at every epoch
+SHUFFLE = True
+
 def str2bool(v):
     return v.lower() in ("yes", "true", "t", "1")
 
 parser = argparse.ArgumentParser(description='Single Shot MultiBox Detector Training')
-parser.add_argument('--version', default='v2', help='conv11_2(v2) or pool6(v1) as last layer')
+# parser.add_argument('--version', default='v2', help='conv11_2(v2) or pool6(v1) as last layer')
 parser.add_argument('--basenet', default='vgg16_reducedfc.pth', help='pretrained base model')
 parser.add_argument('--jaccard_threshold', default=0.5, type=float, help='Min Jaccard index for matching')
-parser.add_argument('--batch_size', default=128, type=int, help='Batch size for training')
+parser.add_argument('--batch_size', default=32, type=int, help='Batch size for training')
 parser.add_argument('--resume', default=None, type=str, help='Resume from checkpoint')
-parser.add_argument('--num_workers', default=2, type=int, help='Number of workers used in dataloading')
+parser.add_argument('--num_workers', default=4, type=int, help='Number of workers used in dataloading')
 parser.add_argument('--iterations', default=120000, type=int, help='Number of training iterations')
 parser.add_argument('--start_iter', default=0, type=int, help='Begin counting iterations starting from this value (should be used with resume)')
 parser.add_argument('--cuda', default=True, type=str2bool, help='Use cuda to train model')
@@ -32,10 +42,10 @@ parser.add_argument('--momentum', default=0.9, type=float, help='momentum')
 parser.add_argument('--weight_decay', default=5e-4, type=float, help='Weight decay for SGD')
 parser.add_argument('--gamma', default=0.1, type=float, help='Gamma update for SGD')
 parser.add_argument('--log_iters', default=True, type=bool, help='Print the loss at each iteration')
-parser.add_argument('--visdom', default=False, type=str2bool, help='Use visdom to for loss visualization')
-parser.add_argument('--send_images_to_visdom', type=str2bool, default=False, help='Sample a random image from each 10th batch, send it to visdom after augmentations step')
+# parser.add_argument('--visdom', default=False, type=str2bool, help='Use visdom to for loss visualization')
+# parser.add_argument('--send_images_to_visdom', type=str2bool, default=False, help='Sample a random image from each 10th batch, send it to visdom after augmentations step')
 parser.add_argument('--save_folder', default='weights/', help='Location to save checkpoint models')
-parser.add_argument('--voc_root', default=VOCroot, help='Location of VOC root directory')
+parser.add_argument('--checkout_root', default=CHECKOUTroot, help='Location of checkout root directory')
 args = parser.parse_args()
 
 if args.cuda and torch.cuda.is_available():
@@ -43,7 +53,25 @@ if args.cuda and torch.cuda.is_available():
 else:
     torch.set_default_tensor_type('torch.FloatTensor')
 
-cfg = (v1, v2)[args.version == 'v2']
+cfg = {
+    'feature_maps' : [38, 19, 10, 5, 3, 1],
+
+    'min_dim' : 300,
+
+    'steps' : [8, 16, 32, 64, 100, 300],
+
+    'min_sizes' : [30, 60, 111, 162, 213, 264],
+
+    'max_sizes' : [60, 111, 162, 213, 264, 315],
+
+    # 'aspect_ratios' : [[2, 1/2], [2, 1/2, 3, 1/3], [2, 1/2, 3, 1/3],
+    #                    [2, 1/2, 3, 1/3], [2, 1/2], [2, 1/2]],
+    'aspect_ratios' : [[2], [2, 3], [2, 3], [2, 3], [2], [2]],
+
+    'variance' : [0.1, 0.2],
+
+    'clip' : True,
+}
 
 if not os.path.exists(args.save_folder):
     os.mkdir(args.save_folder)
@@ -51,8 +79,8 @@ if not os.path.exists(args.save_folder):
 train_sets = [('2007', 'trainval'), ('2012', 'trainval')]
 # train_sets = 'train'
 ssd_dim = 300  # only support 300 now
-means = (104, 117, 123)  # only support voc now
-num_classes = len(VOC_CLASSES) + 1
+means = (104, 117, 123) 
+num_classes = len(CHECKOUT_CLASSES) + 1
 batch_size = args.batch_size
 accum_batch_size = 32
 iter_size = accum_batch_size / batch_size
@@ -62,9 +90,9 @@ stepvalues = (80000, 100000, 120000)
 gamma = 0.1
 momentum = 0.9
 
-if args.visdom:
-    import visdom
-    viz = visdom.Visdom()
+# if args.visdom:
+#     import visdom
+#     viz = visdom.Visdom()
 
 ssd_net = build_ssd('train', 300, num_classes)
 net = ssd_net
@@ -115,34 +143,34 @@ def train():
     epoch = 0
     print('Loading Dataset...')
 
-    dataset = VOCDetection(args.voc_root, train_sets, SSDAugmentation(
+    dataset = CHECKOUTDetection(args.checkout_root, train_sets, SSDAugmentation(
         ssd_dim, means), AnnotationTransform())
 
     epoch_size = len(dataset) // args.batch_size
     print('Training SSD on', dataset.name)
     step_index = 0
-    if args.visdom:
-        # initialize visdom loss plot
-        lot = viz.line(
-            X=torch.zeros((1,)).cpu(),
-            Y=torch.zeros((1, 3)).cpu(),
-            opts=dict(
-                xlabel='Iteration',
-                ylabel='Loss',
-                title='Current SSD Training Loss',
-                legend=['Loc Loss', 'Conf Loss', 'Loss']
-            )
-        )
-        epoch_lot = viz.line(
-            X=torch.zeros((1,)).cpu(),
-            Y=torch.zeros((1, 3)).cpu(),
-            opts=dict(
-                xlabel='Epoch',
-                ylabel='Loss',
-                title='Epoch SSD Training Loss',
-                legend=['Loc Loss', 'Conf Loss', 'Loss']
-            )
-        )
+    # if args.visdom:
+    #     # initialize visdom loss plot
+    #     lot = viz.line(
+    #         X=torch.zeros((1,)).cpu(),
+    #         Y=torch.zeros((1, 3)).cpu(),
+    #         opts=dict(
+    #             xlabel='Iteration',
+    #             ylabel='Loss',
+    #             title='Current SSD Training Loss',
+    #             legend=['Loc Loss', 'Conf Loss', 'Loss']
+    #         )
+    #     )
+    #     epoch_lot = viz.line(
+    #         X=torch.zeros((1,)).cpu(),
+    #         Y=torch.zeros((1, 3)).cpu(),
+    #         opts=dict(
+    #             xlabel='Epoch',
+    #             ylabel='Loss',
+    #             title='Epoch SSD Training Loss',
+    #             legend=['Loc Loss', 'Conf Loss', 'Loss']
+    #         )
+    #     )
     batch_iterator = None
     data_loader = data.DataLoader(dataset, batch_size, num_workers=args.num_workers,
                                   shuffle=True, collate_fn=detection_collate, pin_memory=True)
@@ -153,14 +181,14 @@ def train():
         if iteration in stepvalues:
             step_index += 1
             adjust_learning_rate(optimizer, args.gamma, step_index)
-            if args.visdom:
-                viz.line(
-                    X=torch.ones((1, 3)).cpu() * epoch,
-                    Y=torch.Tensor([loc_loss, conf_loss,
-                        loc_loss + conf_loss]).unsqueeze(0).cpu() / epoch_size,
-                    win=epoch_lot,
-                    update='append'
-                )
+            # if args.visdom:
+            #     viz.line(
+            #         X=torch.ones((1, 3)).cpu() * epoch,
+            #         Y=torch.Tensor([loc_loss, conf_loss,
+            #             loc_loss + conf_loss]).unsqueeze(0).cpu() / epoch_size,
+            #         win=epoch_lot,
+            #         update='append'
+            #     )
             # reset epoch loss counters
             loc_loss = 0
             conf_loss = 0
@@ -190,26 +218,26 @@ def train():
         if iteration % 10 == 0:
             print('Timer: %.4f sec.' % (t1 - t0))
             print('iter ' + repr(iteration) + ' || Loss: %.4f ||' % (loss.data[0]), end=' ')
-            if args.visdom and args.send_images_to_visdom:
-                random_batch_index = np.random.randint(images.size(0))
-                viz.image(images.data[random_batch_index].cpu().numpy())
-        if args.visdom:
-            viz.line(
-                X=torch.ones((1, 3)).cpu() * iteration,
-                Y=torch.Tensor([loss_l.data[0], loss_c.data[0],
-                    loss_l.data[0] + loss_c.data[0]]).unsqueeze(0).cpu(),
-                win=lot,
-                update='append'
-            )
+            # if args.visdom and args.send_images_to_visdom:
+            #     random_batch_index = np.random.randint(images.size(0))
+            #     viz.image(images.data[random_batch_index].cpu().numpy())
+        # if args.visdom:
+        #     viz.line(
+        #         X=torch.ones((1, 3)).cpu() * iteration,
+        #         Y=torch.Tensor([loss_l.data[0], loss_c.data[0],
+        #             loss_l.data[0] + loss_c.data[0]]).unsqueeze(0).cpu(),
+        #         win=lot,
+        #         update='append'
+        #     )
             # hacky fencepost solution for 0th epoch plot
-            if iteration == 0:
-                viz.line(
-                    X=torch.zeros((1, 3)).cpu(),
-                    Y=torch.Tensor([loc_loss, conf_loss,
-                        loc_loss + conf_loss]).unsqueeze(0).cpu(),
-                    win=epoch_lot,
-                    update=True
-                )
+            # if iteration == 0:
+            #     viz.line(
+            #         X=torch.zeros((1, 3)).cpu(),
+            #         Y=torch.Tensor([loc_loss, conf_loss,
+            #             loc_loss + conf_loss]).unsqueeze(0).cpu(),
+            #         win=epoch_lot,
+            #         update=True
+            #     )
         if iteration % 5000 == 0:
             print('Saving state, iter:', iteration)
             torch.save(ssd_net.state_dict(), 'weights/ssd300_0712_' +

@@ -7,9 +7,9 @@ import torch.nn as nn
 import torch.backends.cudnn as cudnn
 import torchvision.transforms as transforms
 from torch.autograd import Variable
-from data import VOCroot, VOC_CLASSES as labelmap
+from data import CHECKOUTroot, CHECKOUT_CLASSES as labelmap
 from PIL import Image
-from data import AnnotationTransform, VOCDetection, BaseTransform, VOC_CLASSES
+from data import AnnotationTransform, CHECKOUTDetection, BaseTransform, CHECKOUT_CLASSES
 import torch.utils.data as data
 from ssd import build_ssd
 
@@ -22,7 +22,7 @@ parser.add_argument('--visual_threshold', default=0.6, type=float,
                     help='Final confidence threshold')
 parser.add_argument('--cuda', default=False, type=bool,
                     help='Use cuda to train model')
-parser.add_argument('--voc_root', default=VOCroot, help='Location of VOC root directory')
+parser.add_argument('--voc_root', default=CHECKOUTroot, help='Location of VOC root directory')
 
 args = parser.parse_args()
 
@@ -73,13 +73,13 @@ def test_net(save_folder, net, cuda, testset, transform, thresh):
 
 if __name__ == '__main__':
     # load net
-    num_classes = len(VOC_CLASSES) + 1 # +1 background
+    num_classes = len(CHECKOUT_CLASSES) + 1 # +1 background
     net = build_ssd('test', 300, num_classes) # initialize SSD
     net.load_state_dict(torch.load(args.trained_model))
     net.eval()
     print('Finished loading model!')
     # load data
-    testset = VOCDetection(args.voc_root, [('2007', 'test')], None, AnnotationTransform())
+    testset = CHECKOUTDetection(args.voc_root, [('2007', 'test')], None, AnnotationTransform())
     if args.cuda:
         net = net.cuda()
         cudnn.benchmark = True
